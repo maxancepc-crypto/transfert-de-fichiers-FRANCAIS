@@ -4,3 +4,4 @@ on envoie un ou plusieurs fichiers, on obtient un seul lien de téléchargement 
 
 adresse url https://transfert-de-fichiers-francais.onrender.com/
 
+VOUS POURREZ ENVOYER JUSQUA 50 GO DE FICHIERS
