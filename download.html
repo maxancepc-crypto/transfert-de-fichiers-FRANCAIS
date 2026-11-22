@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Télécharger vos fichiers</title>
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --text:#1c1e26; --muted:#6b7080; --accent:#4f46e5; --border:#d9dce6; --soft:rgba(79,70,229,.08); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14151b; --card:#1d1f28; --text:#eceef5; --muted:#9a9fb2; --accent:#818cf8; --border:#343748; --soft:rgba(129,140,248,.12); }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--text);
+         font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:1rem; }
+  .card { background:var(--card); width:100%; max-width:520px; border-radius:16px; padding:2rem; box-shadow:0 8px 30px rgba(0,0,0,.08); }
+  .summary { text-align:center; margin-bottom:1rem; }
+  .summary .big { display:block; font-size:2rem; font-weight:800; line-height:1.2; }
+  .summary .size { color:var(--muted); font-size:1.05rem; }
+  .exp { text-align:center; color:var(--muted); font-size:.9rem; margin:0 0 1rem; }
+  ul.files { list-style:none; margin:0; padding:0; max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:12px; }
+  ul.files li { display:flex; align-items:center; gap:.75rem; padding:.7rem .9rem; border-bottom:1px solid var(--border); }
+  ul.files li:last-child { border-bottom:0; }
+  ul.files .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  ul.files .sz { color:var(--muted); font-size:.85rem; white-space:nowrap; }
+  ul.files a.dl { color:var(--accent); text-decoration:none; font-size:1.2rem; padding:.2rem .4rem; border-radius:6px; }
+  ul.files a.dl:hover { background:var(--soft); }
+  a.btn { display:block; margin-top:1rem; padding:.85rem; border-radius:8px; background:var(--accent); color:#fff;
+          text-align:center; text-decoration:none; font-weight:600; }
+  .center { text-align:center; }
+  p { color:var(--muted); }
+</style>
+</head>
+<body>
+<main class="card" id="box"><p class="center">Chargement…</p></main>
+<script>
+const id = location.pathname.split('/').pop();
+const box = document.getElementById('box');
+const fmt = (n) => n >= 1073741824 ? (n/1073741824).toFixed(2)+' Go'
+                 : n >= 1048576 ? (n/1048576).toFixed(1)+' Mo'
+                 : Math.max(1, Math.round(n/1024))+' Ko';
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+
+fetch('/api/info/' + id).then(async r => {
+  if (!r.ok) {
+    box.innerHTML = '<div class="center"><h2>Transfert introuvable</h2><p>Le lien est invalide ou a expiré.</p></div>';
+    return;
+  }
+  const m = await r.json();
+  box.innerHTML = '';
+
+  const sum = el('div', 'summary');
+  sum.append(el('span', 'big', m.count + (m.count > 1 ? ' fichiers' : ' fichier')), el('span', 'size', fmt(m.totalSize)));
+  box.append(sum);
+  box.append(el('p', 'exp', 'Disponible jusqu\'au ' + new Date(m.expiresAt).toLocaleString('fr-FR')));
+
+  const ul = el('ul', 'files');
+  m.files.forEach(f => {
+    const li = el('li');
+    const name = el('span', 'name', '📄 ' + f.name); name.title = f.name;
+    const sz = el('span', 'sz', fmt(f.size));
+    const a = el('a', 'dl', '⬇'); a.href = `/d/${id}/${f.index}`; a.title = 'Télécharger ce fichier';
+    li.append(name, sz, a);
+    ul.append(li);
+  });
+  box.append(ul);
+
+  if (m.count > 1) {
+    const all = el('a', 'btn', 'Tout télécharger (.zip)'); all.href = `/d/${id}/zip`;
+    box.append(all);
+  } else {
+    const one = el('a', 'btn', 'Télécharger'); one.href = `/d/${id}/0`;
+    box.append(one);
+  }
+});
+</script>
+</body>
+</html>

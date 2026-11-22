@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transfert de fichiers</title>
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --text:#1c1e26; --muted:#6b7080; --accent:#4f46e5; --border:#d9dce6; --soft:rgba(79,70,229,.08); --danger:#dc2626; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14151b; --card:#1d1f28; --text:#eceef5; --muted:#9a9fb2; --accent:#818cf8; --border:#343748; --soft:rgba(129,140,248,.12); --danger:#f87171; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--text);
+         font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:1rem; }
+  .card { background:var(--card); width:100%; max-width:520px; border-radius:16px; padding:2rem; box-shadow:0 8px 30px rgba(0,0,0,.08); }
+  h1 { margin:0 0 .25rem; font-size:1.5rem; }
+  p.sub { margin:0 0 1.5rem; color:var(--muted); font-size:.95rem; }
+  .hidden { display:none !important; }
+
+  #drop { border:2px dashed var(--border); border-radius:12px; padding:2.5rem 1rem; text-align:center; cursor:pointer; transition:.15s; }
+  #drop.over { border-color:var(--accent); background:var(--soft); }
+  #drop strong { color:var(--accent); }
+
+  .summary { text-align:center; margin-bottom:1rem; }
+  .summary .big { display:block; font-size:2rem; font-weight:800; line-height:1.2; }
+  .summary .size { color:var(--muted); font-size:1.05rem; }
+
+  ul.files { list-style:none; margin:0; padding:0; max-height:300px; overflow-y:auto; border:1px solid var(--border); border-radius:12px; }
+  ul.files li { display:flex; align-items:center; gap:.75rem; padding:.7rem .9rem; border-bottom:1px solid var(--border); }
+  ul.files li:last-child { border-bottom:0; }
+  ul.files .ico { font-size:1.3rem; }
+  ul.files .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  ul.files .sz { color:var(--muted); font-size:.85rem; white-space:nowrap; }
+  ul.files li.bad .sz { color:var(--danger); font-weight:600; }
+  ul.files button.rm { all:unset; cursor:pointer; color:var(--muted); font-size:1.1rem; padding:.2rem .4rem; border-radius:6px; }
+  ul.files button.rm:hover { color:var(--danger); background:var(--soft); }
+
+  button.main { margin-top:1rem; width:100%; padding:.85rem; border:0; border-radius:8px; background:var(--accent);
+                color:#fff; font-size:1rem; font-weight:600; cursor:pointer; }
+  button.main:disabled { opacity:.5; cursor:not-allowed; }
+  button.ghost { margin-top:.6rem; width:100%; padding:.7rem; border:1px solid var(--border); border-radius:8px; background:transparent;
+                 color:var(--text); font-size:.95rem; cursor:pointer; }
+  input[type=password] { width:100%; margin-top:1rem; padding:.7rem; border-radius:8px; border:1px solid var(--border);
+          background:transparent; color:var(--text); font-size:1rem; }
+  progress { width:100%; margin-top:1rem; height:10px; }
+  #pct { text-align:center; color:var(--muted); font-size:.9rem; margin-top:.3rem; }
+  .err { color:var(--danger); margin-top:1rem; font-size:.95rem; }
+  #linkbox { margin:1rem 0; padding:1rem; border-radius:10px; background:var(--soft); word-break:break-all; }
+  #linkbox a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>📁 Transfert de fichiers</h1>
+  <p class="sub" id="info">Envoyez vos fichiers et partagez le lien.</p>
+
+  <!-- Étape 1 : choisir / voir les fichiers -->
+  <section id="step1">
+    <div id="drop"><strong>Cliquez</strong> ou déposez vos fichiers ici<br><span style="color:var(--muted)">Vous pouvez en choisir plusieurs</span></div>
+    <input type="file" id="file" multiple class="hidden">
+
+    <div id="filled" class="hidden">
+      <div class="summary"><span class="big" id="count"></span><span class="size" id="total"></span></div>
+      <ul class="files" id="list"></ul>
+      <button class="ghost" id="add" type="button">＋ Ajouter d'autres fichiers</button>
+    </div>
+
+    <input type="password" id="pwd" class="hidden" placeholder="Mot de passe d'envoi">
+    <button class="main" id="send" disabled>Envoyer</button>
+    <progress id="bar" class="hidden" value="0" max="100"></progress>
+    <div id="pct" class="hidden"></div>
+    <div id="err" class="err hidden"></div>
+  </section>
+
+  <!-- Étape 2 : résultat -->
+  <section id="step2" class="hidden">
+    <div class="summary"><span class="big" id="rcount"></span><span class="size" id="rtotal"></span></div>
+    <ul class="files" id="rlist"></ul>
+    <div id="linkbox">Lien de téléchargement :<br><a id="link" href="#" target="_blank"></a></div>
+    <button class="main" id="copy" type="button" style="margin-top:0">Copier le lien</button>
+    <button class="ghost" id="again" type="button">Nouvel envoi</button>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let files = [];
+let cfg = { maxMb: 100, maxFiles: 100, expiryHours: 24, passwordRequired: false };
+
+const fmt = (n) => n >= 1073741824 ? (n/1073741824).toFixed(2)+' Go'
+                 : n >= 1048576 ? (n/1048576).toFixed(1)+' Mo'
+                 : Math.max(1, Math.round(n/1024))+' Ko';
+const plural = (n) => n + (n > 1 ? ' fichiers' : ' fichier');
+
+fetch('/api/config').then(r => r.json()).then(c => {
+  cfg = c;
+  const maxTxt = c.maxMb >= 1024 ? (c.maxMb/1024)+' Go' : c.maxMb+' Mo';
+  $('info').textContent = `Jusqu'à ${maxTxt} par fichier · lien valable ${c.expiryHours} h.`;
+  if (c.passwordRequired) $('pwd').classList.remove('hidden');
+});
+
+function fillList(ul, items, withRemove) {
+  ul.innerHTML = '';
+  items.forEach((f, i) => {
+    const li = document.createElement('li');
+    if (withRemove && f.size > cfg.maxMb * 1048576) li.className = 'bad';
+    const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = '📄';
+    const name = document.createElement('span'); name.className = 'name'; name.textContent = f.name; name.title = f.name;
+    const sz = document.createElement('span'); sz.className = 'sz';
+    sz.textContent = (withRemove && f.size > cfg.maxMb * 1048576) ? 'trop gros · ' + fmt(f.size) : fmt(f.size);
+    li.append(ico, name, sz);
+    if (withRemove) {
+      const rm = document.createElement('button'); rm.className = 'rm'; rm.type = 'button'; rm.title = 'Retirer'; rm.textContent = '✕';
+      rm.onclick = () => { files.splice(i, 1); render(); };
+      li.append(rm);
+    }
+    ul.append(li);
+  });
+}
+
+function render() {
+  const has = files.length > 0;
+  $('drop').classList.toggle('hidden', has);
+  $('filled').classList.toggle('hidden', !has);
+  const total = files.reduce((s, f) => s + f.size, 0);
+  $('count').textContent = plural(files.length);
+  $('total').textContent = fmt(total);
+  fillList($('list'), files, true);
+  const tooBig = files.some(f => f.size > cfg.maxMb * 1048576);
+  const tooMany = files.length > cfg.maxFiles;
+  $('send').disabled = !has || tooBig || tooMany;
+  $('err').classList.toggle('hidden', !(tooBig || tooMany));
+  if (tooMany) $('err').textContent = `Trop de fichiers (max ${cfg.maxFiles}).`;
+  else if (tooBig) $('err').textContent = 'Certains fichiers dépassent la taille maximale : retirez-les pour envoyer.';
+}
+
+function addFiles(list) {
+  for (const f of list) {
+    // évite les doublons exacts
+    if (!files.some(x => x.name === f.name && x.size === f.size && x.lastModified === f.lastModified)) files.push(f);
+  }
+  render();
+}
+
+$('drop').onclick = () => $('file').click();
+$('add').onclick = () => $('file').click();
+$('file').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
+['dragenter','dragover'].forEach(ev => document.body.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave','drop'].forEach(ev => document.body.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+document.body.addEventListener('drop', e => { if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+
+$('send').onclick = () => {
+  if (!files.length) return;
+  const fd = new FormData();
+  files.forEach(f => fd.append('files', f));
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/upload');
+  if (!$('pwd').classList.contains('hidden')) xhr.setRequestHeader('x-upload-password', $('pwd').value);
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const p = (e.loaded / e.total) * 100;
+    $('bar').value = p;
+    $('pct').textContent = `Envoi en cours… ${Math.round(p)} %`;
+  };
+  const stop = () => { $('bar').classList.add('hidden'); $('pct').classList.add('hidden'); $('send').disabled = false; };
+  xhr.onload = () => {
+    stop();
+    let data = {};
+    try { data = JSON.parse(xhr.responseText); } catch {}
+    if (xhr.status === 200) {
+      $('rcount').textContent = plural(data.count) + ' envoyé' + (data.count > 1 ? 's' : '');
+      $('rtotal').textContent = fmt(data.totalSize);
+      fillList($('rlist'), data.files, false);
+      $('link').href = data.url; $('link').textContent = data.url;
+      $('step1').classList.add('hidden'); $('step2').classList.remove('hidden');
+    } else {
+      $('err').textContent = data.error || "Erreur lors de l'envoi.";
+      $('err').classList.remove('hidden');
+    }
+  };
+  xhr.onerror = () => { stop(); $('err').textContent = 'Erreur réseau.'; $('err').classList.remove('hidden'); };
+  $('err').classList.add('hidden');
+  $('bar').value = 0; $('bar').classList.remove('hidden');
+  $('pct').textContent = 'Envoi en cours… 0 %'; $('pct').classList.remove('hidden');
+  $('send').disabled = true;
+  xhr.send(fd);
+};
+
+$('copy').onclick = () => { navigator.clipboard.writeText($('link').href); $('copy').textContent = 'Lien copié ✓'; };
+$('again').onclick = () => location.reload();
+render();
+</script>
+</body>
+</html>
