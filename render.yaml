@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: file-transfer
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MAX_FILE_MB
+        value: "100"
+      - key: EXPIRY_HOURS
+        value: "24"
+      - key: UPLOAD_PASSWORD
+        sync: false   # à renseigner dans le dashboard Render
